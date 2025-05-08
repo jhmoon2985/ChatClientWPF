@@ -1,0 +1,146 @@
+﻿<Window x:Class="ChatClientWPF.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:ChatClientWPF"
+        mc:Ignorable="d"
+        Title="WebServerMVC 채팅 클라이언트" Height="550" Width="450"
+        Closing="Window_Closing">
+    <Window.Resources>
+        <Style x:Key="MessageBubble" TargetType="Border">
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="Margin" Value="5,3"/>
+            <Setter Property="MaxWidth" Value="250"/>
+        </Style>
+        <Style x:Key="SystemMessageBubble" TargetType="Border">
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="Margin" Value="20,3"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="Background" Value="LightGray"/>
+            <Setter Property="MaxWidth" Value="300"/>
+        </Style>
+        <Style x:Key="ChatTimeStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Foreground" Value="Gray"/>
+            <Setter Property="Margin" Value="0,0,5,0"/>
+            <Setter Property="VerticalAlignment" Value="Bottom"/>
+        </Style>
+    </Window.Resources>
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- 헤더 섹션 -->
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="WebServerMVC 채팅 클라이언트" FontWeight="Bold" FontSize="18" Margin="0,0,0,5"/>
+                <TextBlock Text="{Binding ConnectionStatus}" Margin="0,0,0,5"/>
+                <TextBlock Text="{Binding MatchStatus}" Margin="0,0,0,10"/>
+            </StackPanel>
+
+            <Button Grid.Column="1" Content="{Binding IsConnected, Converter={StaticResource BoolToConnectButtonTextConverter}}" 
+                    Click="Connect_Click" Width="80" Height="30" VerticalAlignment="Top"/>
+        </Grid>
+
+        <!-- 설정 섹션 -->
+        <Grid Grid.Row="1" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0" Text="서버 URL:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+            <TextBox Grid.Column="1" Text="{Binding ServerUrl}" Margin="0,0,10,0" IsEnabled="{Binding IsDisconnected}"/>
+
+            <TextBlock Grid.Column="2" Text="성별:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+            <ComboBox Grid.Column="3" SelectedValue="{Binding SelectedGender}" IsEnabled="{Binding IsDisconnected}">
+                <ComboBoxItem Content="남성" Tag="male"/>
+                <ComboBoxItem Content="여성" Tag="female"/>
+            </ComboBox>
+        </Grid>
+
+        <!-- 채팅 메시지 리스트 -->
+        <Border Grid.Row="2" BorderThickness="1" BorderBrush="#DDDDDD" Background="#F5F5F5" Padding="5">
+            <ListView x:Name="MessageList" ItemsSource="{Binding Messages}" ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     BorderThickness="0" Background="Transparent">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        <Setter Property="BorderThickness" Value="0"/>
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListViewItem">
+                                    <ContentPresenter/>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid>
+                            <!-- 시스템 메시지 -->
+                            <Border Style="{StaticResource SystemMessageBubble}" 
+                                    Visibility="{Binding IsSystemMessage, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Text="{Binding Content}" TextWrapping="Wrap" FontStyle="Italic"/>
+                            </Border>
+
+                            <!-- 일반 채팅 메시지 -->
+                            <StackPanel Orientation="Horizontal" 
+                                        HorizontalAlignment="{Binding MessageAlignment}"
+                                        Visibility="{Binding IsSystemMessage, Converter={StaticResource BoolToVisibilityConverterInverted}}">
+
+                                <TextBlock Text="{Binding FormattedTime}" Style="{StaticResource ChatTimeStyle}"
+                                           Visibility="{Binding IsFromMe, Converter={StaticResource BoolToVisibilityConverterInverted}}"/>
+
+                                <Border Background="{Binding MessageBackground}" Style="{StaticResource MessageBubble}">
+                                    <TextBlock Text="{Binding Content}" TextWrapping="Wrap"/>
+                                </Border>
+
+                                <TextBlock Text="{Binding FormattedTime}" Style="{StaticResource ChatTimeStyle}"
+                                           Visibility="{Binding IsFromMe, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            </StackPanel>
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Border>
+
+        <!-- 버튼 컨트롤 -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,10,0,10" HorizontalAlignment="Center">
+            <Button Content="대기열 참가" Click="JoinQueue_Click" Width="100" IsEnabled="{Binding CanJoinQueue}" Margin="0,0,10,0"/>
+            <Button Content="대화 종료" Click="EndChat_Click" Width="100" IsEnabled="{Binding CanEndChat}"/>
+        </StackPanel>
+
+        <!-- 메시지 입력 -->
+        <Grid Grid.Row="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBox Grid.Column="0" Text="{Binding MessageInput, UpdateSourceTrigger=PropertyChanged}" 
+                     KeyDown="MessageInput_KeyDown" IsEnabled="{Binding CanSendMessage}" 
+                     TextWrapping="Wrap" AcceptsReturn="True" Height="50" Padding="5"/>
+
+            <Button Grid.Column="1" Content="전송" Click="SendMessage_Click" IsEnabled="{Binding CanSendMessage}" 
+                    Width="60" Height="50" Margin="5,0,0,0"/>
+        </Grid>
+    </Grid>
+</Window>
