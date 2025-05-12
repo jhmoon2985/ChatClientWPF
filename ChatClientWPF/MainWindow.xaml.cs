@@ -33,8 +33,8 @@ namespace ChatClientWPF
         private double _distance;
         private string _connectionStatus;
         private string _matchStatus;
-        private string _selectedGender = "male";
-        private string _serverUrl = "https://localhost:7115"; // Default server URL
+        private ComboBoxItem _selectedGender;
+        private string _serverUrl = "http://localhost:5115"; // Default server URL
 
         public ObservableCollection<ChatMessage> Messages { get; } = new ObservableCollection<ChatMessage>();
         public string MessageInput
@@ -115,13 +115,13 @@ namespace ChatClientWPF
             }
         }
 
-        public string SelectedGender
+        public ComboBoxItem SelectedGender
         {
             get => _selectedGender;
             set
             {
                 _selectedGender = value;
-                OnPropertyChanged();
+                OnPropertyChanged(nameof(SelectedGender));
             }
         }
 
@@ -214,6 +214,7 @@ namespace ChatClientWPF
 
                 // 현재 위치 업데이트 (기본값은 서울 중심부)
                 await UpdateLocationAsync(37.5642135, 127.0016985);
+                await UpdateGenderAsync();
             }
             catch (Exception ex)
             {
@@ -226,13 +227,14 @@ namespace ChatClientWPF
         {
             _hubConnection.On<object>("Registered", async (response) =>
             {
-                var data = JObject.FromObject(response);
-                _clientId = data["ClientId"].ToString();
+                string jsonResponse = response.ToString(); // 또는 response.ToString()
+                JObject data = JObject.Parse(jsonResponse);
+                _clientId = data["clientId"].ToString();
                 SaveClientIdToStorage();
 
                 await Dispatcher.InvokeAsync(() =>
                 {
-                    ConnectionStatus = $"등록됨: {_clientId.Substring(0, 8)}...";
+                    ConnectionStatus = $"등록됨: {_clientId}";
                 });
             });
 
@@ -353,7 +355,20 @@ namespace ChatClientWPF
                 MessageBox.Show($"위치 업데이트 중 오류 발생: {ex.Message}");
             }
         }
-
+        private async Task UpdateGenderAsync()
+        {
+            try
+            {
+                if (IsConnected)
+                {
+                    await _hubConnection.InvokeAsync("UpdateGender", SelectedGender.Tag);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"성별 업데이트 중 오류 발생: {ex.Message}");
+            }
+        }
         private async void JoinQueue_Click(object sender, RoutedEventArgs e)
         {
             if (!IsConnected || IsMatched)
@@ -433,6 +448,7 @@ namespace ChatClientWPF
                     IsMatched = false;
                     ConnectionStatus = "연결 끊김";
                     MatchStatus = "매칭 없음";
+                    _hubConnection = null;
                 }
                 catch (Exception ex)
                 {
