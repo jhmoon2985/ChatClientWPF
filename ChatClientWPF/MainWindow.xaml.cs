@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Runtime.CompilerServices;
@@ -186,15 +187,16 @@ namespace ChatClientWPF
                 MessageBox.Show($"설정 파일을 저장하는 데 실패했습니다: {ex.Message}");
             }
         }
-
+        Stopwatch sp = new Stopwatch();
         private async void Connect_Click(object sender, RoutedEventArgs e)
         {
+            sp.Restart();
             if (IsConnected)
             {
                 await DisconnectAsync();
                 return;
             }
-
+            System.Diagnostics.Debug.WriteLine($"Connect_Click 1: {sp.ElapsedMilliseconds}ms");
             try
             {
                 ConnectionStatus = "연결 중...";
@@ -203,18 +205,21 @@ namespace ChatClientWPF
                     .WithUrl($"{ServerUrl}/chathub")
                     .WithAutomaticReconnect()
                     .Build();
-
+                System.Diagnostics.Debug.WriteLine($"Connect_Click 2: {sp.ElapsedMilliseconds}ms");
                 RegisterHubCallbacks();
-
+                System.Diagnostics.Debug.WriteLine($"Connect_Click 3: {sp.ElapsedMilliseconds}ms");
                 await _hubConnection.StartAsync();
+                System.Diagnostics.Debug.WriteLine($"Connect_Click 4: {sp.ElapsedMilliseconds}ms");
                 await RegisterClientAsync();
-
+                System.Diagnostics.Debug.WriteLine($"Connect_Click 5: {sp.ElapsedMilliseconds}ms");
                 IsConnected = true;
                 ConnectionStatus = "연결됨";
 
                 // 현재 위치 업데이트 (기본값은 서울 중심부)
-                await UpdateLocationAsync(37.5642135, 127.0016985);
-                await UpdateGenderAsync();
+                //await UpdateLocationAsync(37.5642135, 127.0016985);
+                //System.Diagnostics.Debug.WriteLine($"Connect_Click 6: {sp.ElapsedMilliseconds}ms");
+                //await UpdateGenderAsync();
+                //System.Diagnostics.Debug.WriteLine($"Connect_Click 7: {sp.ElapsedMilliseconds}ms");
             }
             catch (Exception ex)
             {
@@ -333,7 +338,25 @@ namespace ChatClientWPF
         {
             try
             {
-                await _hubConnection.InvokeAsync("Register", _clientId);
+                // 기본 위치 설정 (서울 중심부)
+                double latitude = 37.5642135;
+                double longitude = 127.0016985;
+
+                // 성별 정보 가져오기 (선택된 ComboBoxItem이 없으면 기본값으로 male 사용)
+                string gender = "male";
+                if (SelectedGender != null && SelectedGender.Tag != null)
+                {
+                    gender = SelectedGender.Tag.ToString();
+                }
+
+                // 모든 정보를 한 번에 전송
+                await _hubConnection.InvokeAsync("Register", new
+                {
+                    ClientId = _clientId,
+                    Latitude = latitude,
+                    Longitude = longitude,
+                    Gender = gender
+                });
             }
             catch (Exception ex)
             {
