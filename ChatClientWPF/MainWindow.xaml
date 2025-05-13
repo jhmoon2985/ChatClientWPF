@@ -48,15 +48,22 @@
             <StackPanel Grid.Column="0">
                 <TextBlock Text="WebServerMVC 채팅 클라이언트" FontWeight="Bold" FontSize="18" Margin="0,0,0,5"/>
                 <TextBlock Text="{Binding ConnectionStatus}" Margin="0,0,0,5"/>
-                <TextBlock Text="{Binding MatchStatus}" Margin="0,0,0,10"/>
+                <TextBlock Text="{Binding MatchStatus}" Margin="0,0,0,5"/>
+                <TextBlock Text="{Binding LocationText}" Margin="0,0,0,10"/>
             </StackPanel>
-
-            <Button Grid.Column="1" Content="{Binding IsConnected, Converter={StaticResource BoolToConnectButtonTextConverter}}" 
-                    Click="Connect_Click" Width="80" Height="30" VerticalAlignment="Top"/>
+            <StackPanel Grid.Column="1" Orientation="Vertical">
+                <Button Grid.Column="1" Content="{Binding IsConnected, Converter={StaticResource BoolToConnectButtonTextConverter}}" 
+                        Click="Connect_Click" Width="80" Height="30" VerticalAlignment="Top"/>
+                <Button Content="종료" Click="Exit_Click" Width="80" Height="30"/>
+            </StackPanel>
         </Grid>
 
         <!-- 설정 섹션 -->
         <Grid Grid.Row="1" Margin="0,0,0,10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
@@ -64,14 +71,21 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <TextBlock Grid.Column="0" Text="서버 URL:" VerticalAlignment="Center" Margin="0,0,5,0"/>
-            <TextBox Grid.Column="1" Text="{Binding ServerUrl}" Margin="0,0,10,0" IsEnabled="{Binding IsDisconnected}"/>
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="서버 URL:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+            <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding ServerUrl}" Margin="0,0,10,0" IsEnabled="{Binding IsDisconnected}"/>
 
-            <TextBlock Grid.Column="2" Text="성별:" VerticalAlignment="Center" Margin="0,0,5,0"/>
-            <ComboBox Grid.Column="3" SelectedItem="{Binding SelectedGender}" IsEnabled="{Binding IsDisconnected}">
+            <TextBlock Grid.Row="0" Grid.Column="2" Text="성별:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+            <ComboBox Grid.Row="0" x:Name="GenderComboBox" Grid.Column="3" SelectedItem="{Binding SelectedGender}" IsEnabled="{Binding IsDisconnected}">
                 <ComboBoxItem Content="남성" Tag="male"/>
                 <ComboBoxItem Content="여성" Tag="female"/>
             </ComboBox>
+
+            <!-- 위치 정보 입력 -->
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="위도:" VerticalAlignment="Center" Margin="0,10,5,0"/>
+            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Latitude, StringFormat=F6}" Margin="0,10,10,0" IsEnabled="{Binding IsConnected}"/>
+
+            <TextBlock Grid.Row="1" Grid.Column="2" Text="경도:" VerticalAlignment="Center" Margin="0,10,5,0"/>
+            <TextBox Grid.Row="1" Grid.Column="3" Text="{Binding Longitude, StringFormat=F6}" Margin="0,10,0,0" IsEnabled="{Binding IsConnected}"/>
         </Grid>
 
         <!-- 채팅 메시지 리스트 -->

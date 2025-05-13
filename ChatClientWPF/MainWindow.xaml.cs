@@ -35,7 +35,43 @@ namespace ChatClientWPF
         private string _connectionStatus;
         private string _matchStatus;
         private ComboBoxItem _selectedGender;
-        private string _serverUrl = "http://localhost:5115"; // Default server URL
+        private string _serverUrl = "http://localhost:5115"; // Default server URL// 위도와 경도를 직접 바인딩하기 위한 속성
+        private double _latitude = 37.5642135;
+        public double Latitude
+        {
+            get => _latitude;
+            set
+            {
+                _latitude = value;
+                OnPropertyChanged();
+                // 위치 텍스트도 함께 업데이트
+                LocationText = $"위치: {_latitude:F6}, {_longitude:F6}";
+            }
+        }
+
+        private double _longitude = 127.0016985;
+        public double Longitude
+        {
+            get => _longitude;
+            set
+            {
+                _longitude = value;
+                OnPropertyChanged();
+                // 위치 텍스트도 함께 업데이트
+                LocationText = $"위치: {_latitude:F6}, {_longitude:F6}";
+            }
+        }
+        // 위치 텍스트 표시용 속성
+        private string _locationText = "위치: 37.5642135, 127.0016985";
+        public string LocationText
+        {
+            get => _locationText;
+            set
+            {
+                _locationText = value;
+                OnPropertyChanged();
+            }
+        }
 
         public ObservableCollection<ChatMessage> Messages { get; } = new ObservableCollection<ChatMessage>();
         public string MessageInput
@@ -136,6 +172,16 @@ namespace ChatClientWPF
             }
         }
 
+        private string _selectedGenderValue = "male";
+        public string SelectedGenderValue
+        {
+            get => _selectedGenderValue;
+            set
+            {
+                _selectedGenderValue = value;
+            }
+        }
+
         public bool CanJoinQueue => IsConnected && !IsMatched;
         public bool CanSendMessage => IsConnected && IsMatched;
         public bool CanEndChat => IsConnected && IsMatched;
@@ -162,11 +208,28 @@ namespace ChatClientWPF
                     var config = JsonConvert.DeserializeObject<ClientConfig>(json);
                     _clientId = config.ClientId;
                     ServerUrl = config.ServerUrl ?? ServerUrl;
+                    _latitude = config.Latitude;
+                    _longitude = config.Longitude;
+                    SetGender(config.Gender);
                 }
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"설정 파일을 로드하는 데 실패했습니다: {ex.Message}");
+            }
+        }
+
+        private void SetGender(string gender)
+        {
+            ComboBox genderComboBox = (ComboBox)FindName("GenderComboBox");
+            foreach (ComboBoxItem item in genderComboBox.Items)
+            {
+                if (item.Tag.ToString() == gender)
+                {
+                    SelectedGender = item;
+                    SelectedGenderValue = SelectedGender.Tag.ToString();
+                    break;
+                }
             }
         }
 
@@ -177,7 +240,10 @@ namespace ChatClientWPF
                 var config = new ClientConfig
                 {
                     ClientId = _clientId,
-                    ServerUrl = ServerUrl
+                    ServerUrl = ServerUrl,
+                    Latitude = Latitude,
+                    Longitude = Longitude,
+                    Gender = SelectedGenderValue
                 };
                 var json = JsonConvert.SerializeObject(config);
                 System.IO.File.WriteAllText("client_config.json", json);
@@ -254,9 +320,11 @@ namespace ChatClientWPF
 
             _hubConnection.On<object>("Matched", async (matchData) =>
             {
-                var data = JObject.FromObject(matchData);
-                string partnerGender = data["PartnerGender"].ToString();
-                double distance = data["Distance"].ToObject<double>();
+                //var data = JObject.FromObject(matchData);
+                string jsonResponse = matchData.ToString(); // 또는 response.ToString()
+                JObject data = JObject.Parse(jsonResponse);
+                string partnerGender = data["partnerGender"].ToString();
+                double distance = data["distance"].ToObject<double>();
 
                 await Dispatcher.InvokeAsync(() =>
                 {
@@ -290,10 +358,11 @@ namespace ChatClientWPF
 
             _hubConnection.On<object>("ReceiveMessage", async (messageData) =>
             {
-                var data = JObject.FromObject(messageData);
-                string senderId = data["SenderId"].ToString();
-                string message = data["Message"].ToString();
-                DateTime timestamp = data["Timestamp"].ToObject<DateTime>();
+                string jsonResponse = messageData.ToString(); // 또는 response.ToString()
+                JObject data = JObject.Parse(jsonResponse);
+                string senderId = data["senderId"].ToString();
+                string message = data["message"].ToString();
+                DateTime timestamp = data["timestamp"].ToObject<DateTime>();
 
                 await Dispatcher.InvokeAsync(() =>
                 {
@@ -339,8 +408,8 @@ namespace ChatClientWPF
             try
             {
                 // 기본 위치 설정 (서울 중심부)
-                double latitude = 37.5642135;
-                double longitude = 127.0016985;
+                //double latitude = 37.5642135;
+                //double longitude = 127.0016985;
 
                 // 성별 정보 가져오기 (선택된 ComboBoxItem이 없으면 기본값으로 male 사용)
                 string gender = "male";
@@ -353,8 +422,8 @@ namespace ChatClientWPF
                 await _hubConnection.InvokeAsync("Register", new
                 {
                     ClientId = _clientId,
-                    Latitude = latitude,
-                    Longitude = longitude,
+                    Latitude = _latitude,
+                    Longitude = _longitude,
                     Gender = gender
                 });
             }
@@ -400,7 +469,7 @@ namespace ChatClientWPF
             try
             {
                 MatchStatus = "매칭 대기열에 참가 중...";
-                await _hubConnection.InvokeAsync("JoinWaitingQueue", SelectedGender);
+                await _hubConnection.InvokeAsync("JoinWaitingQueue", SelectedGender.Tag.ToString());
             }
             catch (Exception ex)
             {
@@ -420,6 +489,28 @@ namespace ChatClientWPF
             {
                 e.Handled = true;
                 await SendMessageAsync();
+            }
+        }
+
+        // 종료 버튼 이벤트 핸들러 추가
+        private void Exit_Click(object sender, RoutedEventArgs e)
+        {
+            // 먼저 연결 해제
+            if (IsConnected)
+            {
+                DisconnectAsync().ContinueWith(t =>
+                {
+                    // UI 스레드에서 앱 종료
+                    Dispatcher.Invoke(() =>
+                    {
+                        Application.Current.Shutdown();
+                    });
+                });
+            }
+            else
+            {
+                // 연결이 없으면 바로 종료
+                Application.Current.Shutdown();
             }
         }
 
@@ -482,7 +573,7 @@ namespace ChatClientWPF
 
         private void Window_Closing(object sender, CancelEventArgs e)
         {
-            DisconnectAsync().Wait();
+            //DisconnectAsync().Wait();
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
@@ -565,5 +656,8 @@ namespace ChatClientWPF
     {
         public string ClientId { get; set; }
         public string ServerUrl { get; set; }
+        public double Latitude { get; set; }
+        public double Longitude { get; set; }
+        public string Gender { get; set; }
     }
 }
