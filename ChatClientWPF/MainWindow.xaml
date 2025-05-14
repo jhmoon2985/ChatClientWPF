@@ -63,6 +63,8 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
@@ -74,7 +76,7 @@
             <TextBlock Grid.Row="0" Grid.Column="0" Text="서버 URL:" VerticalAlignment="Center" Margin="0,0,5,0"/>
             <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding ServerUrl}" Margin="0,0,10,0" IsEnabled="{Binding IsDisconnected}"/>
 
-            <TextBlock Grid.Row="0" Grid.Column="2" Text="성별:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+            <TextBlock Grid.Row="0" Grid.Column="2" Text="내 성별:" VerticalAlignment="Center" Margin="0,0,5,0"/>
             <ComboBox Grid.Row="0" x:Name="GenderComboBox" Grid.Column="3" SelectedItem="{Binding SelectedGender}" IsEnabled="{Binding IsDisconnected}">
                 <ComboBoxItem Content="남성" Tag="male"/>
                 <ComboBoxItem Content="여성" Tag="female"/>
@@ -86,6 +88,30 @@
 
             <TextBlock Grid.Row="1" Grid.Column="2" Text="경도:" VerticalAlignment="Center" Margin="0,10,5,0"/>
             <TextBox Grid.Row="1" Grid.Column="3" Text="{Binding Longitude, StringFormat=F6}" Margin="0,10,0,0" IsEnabled="{Binding IsConnected}"/>
+            <!-- 매칭 선호도 설정 (새로 추가) -->
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="선호 성별:" VerticalAlignment="Center" Margin="0,10,5,0"/>
+            <ComboBox Grid.Row="2" Grid.Column="1" x:Name="PreferredGenderComboBox" 
+                      SelectedItem="{Binding SelectedPreferredGender}" 
+                      Margin="0,10,10,0" IsEnabled="{Binding IsConnected}">
+                <ComboBoxItem Content="제한 없음" Tag="any"/>
+                <ComboBoxItem Content="남성만" Tag="male"/>
+                <ComboBoxItem Content="여성만" Tag="female"/>
+            </ComboBox>
+
+            <TextBlock Grid.Row="2" Grid.Column="2" Text="최대 거리:" VerticalAlignment="Center" Margin="0,10,5,0"/>
+            <Grid Grid.Row="2" Grid.Column="3" Margin="0,10,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0" Text="{Binding MaxDistance}" IsEnabled="{Binding IsConnected}"/>
+                <TextBlock Grid.Column="1" Text="km" Margin="5,0,0,0" VerticalAlignment="Center"/>
+            </Grid>
+
+            <!-- 매칭 설정 저장 버튼 -->
+            <Button Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Content="매칭 설정 저장" 
+                    Click="SavePreferences_Click" Margin="0,10,0,0" 
+                    IsEnabled="{Binding IsConnected}"/>
         </Grid>
 
         <!-- 채팅 메시지 리스트 -->

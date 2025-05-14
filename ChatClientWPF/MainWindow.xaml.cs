@@ -37,6 +37,34 @@ namespace ChatClientWPF
         private ComboBoxItem _selectedGender;
         private string _serverUrl = "http://localhost:5115"; // Default server URL// 위도와 경도를 직접 바인딩하기 위한 속성
         private double _latitude = 37.5642135;
+        // 선호도 관련 속성 추가
+        private ComboBoxItem _selectedPreferredGender;
+        private int _maxDistance = 10000;
+        private string _preferredGenderValue = "any";
+
+        public ComboBoxItem SelectedPreferredGender
+        {
+            get => _selectedPreferredGender;
+            set
+            {
+                _selectedPreferredGender = value;
+                if (value != null && value.Tag != null)
+                {
+                    _preferredGenderValue = value.Tag.ToString();
+                }
+                OnPropertyChanged();
+            }
+        }
+
+        public int MaxDistance
+        {
+            get => _maxDistance;
+            set
+            {
+                _maxDistance = value;
+                OnPropertyChanged();
+            }
+        }
         public double Latitude
         {
             get => _latitude;
@@ -211,6 +239,16 @@ namespace ChatClientWPF
                     _latitude = config.Latitude;
                     _longitude = config.Longitude;
                     SetGender(config.Gender);
+
+                    // 선호도 설정 로드
+                    if (!string.IsNullOrEmpty(config.PreferredGender))
+                    {
+                        SetPreferredGender(config.PreferredGender);
+                    }
+                    if (config.MaxDistance > 0)
+                    {
+                        MaxDistance = config.MaxDistance;
+                    }
                 }
             }
             catch (Exception ex)
@@ -218,7 +256,19 @@ namespace ChatClientWPF
                 MessageBox.Show($"설정 파일을 로드하는 데 실패했습니다: {ex.Message}");
             }
         }
-
+        private void SetPreferredGender(string preferredGender)
+        {
+            ComboBox preferredGenderComboBox = (ComboBox)FindName("PreferredGenderComboBox");
+            foreach (ComboBoxItem item in preferredGenderComboBox.Items)
+            {
+                if (item.Tag.ToString() == preferredGender)
+                {
+                    SelectedPreferredGender = item;
+                    _preferredGenderValue = preferredGender;
+                    break;
+                }
+            }
+        }
         private void SetGender(string gender)
         {
             ComboBox genderComboBox = (ComboBox)FindName("GenderComboBox");
@@ -243,7 +293,9 @@ namespace ChatClientWPF
                     ServerUrl = ServerUrl,
                     Latitude = Latitude,
                     Longitude = Longitude,
-                    Gender = SelectedGenderValue
+                    Gender = SelectedGenderValue,
+                    PreferredGender = _preferredGenderValue,
+                    MaxDistance = MaxDistance
                 };
                 var json = JsonConvert.SerializeObject(config);
                 System.IO.File.WriteAllText("client_config.json", json);
@@ -381,6 +433,18 @@ namespace ChatClientWPF
                     }
                 });
             });
+            // 선호도 업데이트 응답을 위한 콜백 추가
+            _hubConnection.On("PreferencesUpdated", async () =>
+            {
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    Messages.Add(new ChatMessage
+                    {
+                        IsSystemMessage = true,
+                        Content = "매칭 선호도가 서버에 저장되었습니다."
+                    });
+                });
+            });
 
             _hubConnection.Closed += async (error) =>
             {
@@ -424,7 +488,9 @@ namespace ChatClientWPF
                     ClientId = _clientId,
                     Latitude = _latitude,
                     Longitude = _longitude,
-                    Gender = gender
+                    Gender = gender,
+                    PreferredGender = _preferredGenderValue,
+                    MaxDistance = _maxDistance
                 });
             }
             catch (Exception ex)
@@ -432,7 +498,20 @@ namespace ChatClientWPF
                 MessageBox.Show($"등록 중 오류 발생: {ex.Message}");
             }
         }
-
+        private async Task UpdatePreferencesAsync()
+        {
+            try
+            {
+                if (IsConnected)
+                {
+                    await _hubConnection.InvokeAsync("UpdatePreferences", _preferredGenderValue, MaxDistance);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"선호도 업데이트 중 오류 발생: {ex.Message}");
+            }
+        }
         private async Task UpdateLocationAsync(double latitude, double longitude)
         {
             try
@@ -469,7 +548,8 @@ namespace ChatClientWPF
             try
             {
                 MatchStatus = "매칭 대기열에 참가 중...";
-                await _hubConnection.InvokeAsync("JoinWaitingQueue", Latitude, Longitude, SelectedGender.Tag.ToString());
+                await _hubConnection.InvokeAsync("JoinWaitingQueue", Latitude, Longitude, SelectedGender.Tag.ToString(),
+                    _preferredGenderValue, MaxDistance);
             }
             catch (Exception ex)
             {
@@ -477,7 +557,44 @@ namespace ChatClientWPF
                 MessageBox.Show($"대기열 참가 중 오류 발생: {ex.Message}");
             }
         }
+        // 선호도 설정 저장 버튼 이벤트 핸들러
+        private async void SavePreferences_Click(object sender, RoutedEventArgs e)
+        {
+            if (!IsConnected)
+                return;
 
+            try
+            {
+                if (SelectedPreferredGender != null && SelectedPreferredGender.Tag != null)
+                {
+                    _preferredGenderValue = SelectedPreferredGender.Tag.ToString();
+                }
+
+                await UpdatePreferencesAsync();
+                SaveClientIdToStorage();
+
+                // 사용자에게 저장 완료 알림
+                Messages.Add(new ChatMessage
+                {
+                    IsSystemMessage = true,
+                    Content = $"매칭 선호도가 저장되었습니다. 선호 성별: {GetPreferredGenderDisplayText()}, 최대 거리: {MaxDistance}km"
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"선호도 저장 중 오류 발생: {ex.Message}");
+            }
+        }
+        // 선호 성별 표시 텍스트 반환
+        private string GetPreferredGenderDisplayText()
+        {
+            switch (_preferredGenderValue)
+            {
+                case "male": return "남성만";
+                case "female": return "여성만";
+                default: return "제한 없음";
+            }
+        }
         private async void SendMessage_Click(object sender, RoutedEventArgs e)
         {
             await SendMessageAsync();
@@ -659,5 +776,7 @@ namespace ChatClientWPF
         public double Latitude { get; set; }
         public double Longitude { get; set; }
         public string Gender { get; set; }
+        public string PreferredGender { get; set; } = "any";
+        public int MaxDistance { get; set; } = 10000;
     }
 }
