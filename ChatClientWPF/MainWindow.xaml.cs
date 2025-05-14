@@ -469,7 +469,7 @@ namespace ChatClientWPF
             try
             {
                 MatchStatus = "매칭 대기열에 참가 중...";
-                await _hubConnection.InvokeAsync("JoinWaitingQueue", SelectedGender.Tag.ToString());
+                await _hubConnection.InvokeAsync("JoinWaitingQueue", Latitude, Longitude, SelectedGender.Tag.ToString());
             }
             catch (Exception ex)
             {
