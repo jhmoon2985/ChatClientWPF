@@ -28,6 +28,12 @@
             <Setter Property="Margin" Value="0,0,5,0"/>
             <Setter Property="VerticalAlignment" Value="Bottom"/>
         </Style>
+        <Style x:Key="ImageMessageStyle" TargetType="Image">
+            <Setter Property="MaxWidth" Value="200"/>
+            <Setter Property="MaxHeight" Value="200"/>
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="Stretch" Value="Uniform"/>
+        </Style>
     </Window.Resources>
     <Grid Margin="10">
         <Grid.RowDefinitions>
@@ -88,6 +94,7 @@
 
             <TextBlock Grid.Row="1" Grid.Column="2" Text="경도:" VerticalAlignment="Center" Margin="0,10,5,0"/>
             <TextBox Grid.Row="1" Grid.Column="3" Text="{Binding Longitude, StringFormat=F6}" Margin="0,10,0,0" IsEnabled="{Binding IsConnected}"/>
+
             <!-- 매칭 선호도 설정 (새로 추가) -->
             <TextBlock Grid.Row="2" Grid.Column="0" Text="선호 성별:" VerticalAlignment="Center" Margin="0,10,5,0"/>
             <ComboBox Grid.Row="2" Grid.Column="1" x:Name="PreferredGenderComboBox" 
@@ -150,7 +157,20 @@
                                            Visibility="{Binding IsFromMe, Converter={StaticResource BoolToVisibilityConverterInverted}}"/>
 
                                 <Border Background="{Binding MessageBackground}" Style="{StaticResource MessageBubble}">
-                                    <TextBlock Text="{Binding Content}" TextWrapping="Wrap"/>
+                                    <!-- 텍스트 또는 이미지 표시 -->
+                                    <Grid>
+                                        <!-- 텍스트 메시지 -->
+                                        <TextBlock Text="{Binding Content}" TextWrapping="Wrap"
+                                                   Visibility="{Binding IsImageMessage, Converter={StaticResource BoolToVisibilityConverterInverted}}"/>
+
+                                        <!-- 이미지 메시지 -->
+                                        <StackPanel Visibility="{Binding IsImageMessage, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <Image Source="{Binding ThumbnailUrl}" Style="{StaticResource ImageMessageStyle}" 
+                                                   MouseLeftButtonDown="Image_MouseLeftButtonDown" Tag="{Binding ImageUrl}"/>
+                                            <TextBlock Text="이미지를 클릭하면 원본을 볼 수 있습니다" FontSize="9" Foreground="Gray"
+                                                       HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                    </Grid>
                                 </Border>
 
                                 <TextBlock Text="{Binding FormattedTime}" Style="{StaticResource ChatTimeStyle}"
@@ -173,13 +193,17 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
             <TextBox Grid.Column="0" Text="{Binding MessageInput, UpdateSourceTrigger=PropertyChanged}" 
                      KeyDown="MessageInput_KeyDown" IsEnabled="{Binding CanSendMessage}" 
                      TextWrapping="Wrap" AcceptsReturn="True" Height="50" Padding="5"/>
 
-            <Button Grid.Column="1" Content="전송" Click="SendMessage_Click" IsEnabled="{Binding CanSendMessage}" 
+            <Button Grid.Column="1" Content="이미지" Click="SendImage_Click" IsEnabled="{Binding CanSendMessage}" 
+                    Width="60" Height="50" Margin="5,0,0,0"/>
+
+            <Button Grid.Column="2" Content="전송" Click="SendMessage_Click" IsEnabled="{Binding CanSendMessage}" 
                     Width="60" Height="50" Margin="5,0,0,0"/>
         </Grid>
     </Grid>

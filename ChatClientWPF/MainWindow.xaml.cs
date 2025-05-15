@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
@@ -13,7 +15,10 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using ChatClientWPF.Models;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Win32;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -332,12 +337,6 @@ namespace ChatClientWPF
                 System.Diagnostics.Debug.WriteLine($"Connect_Click 5: {sp.ElapsedMilliseconds}ms");
                 IsConnected = true;
                 ConnectionStatus = "연결됨";
-
-                // 현재 위치 업데이트 (기본값은 서울 중심부)
-                //await UpdateLocationAsync(37.5642135, 127.0016985);
-                //System.Diagnostics.Debug.WriteLine($"Connect_Click 6: {sp.ElapsedMilliseconds}ms");
-                //await UpdateGenderAsync();
-                //System.Diagnostics.Debug.WriteLine($"Connect_Click 7: {sp.ElapsedMilliseconds}ms");
             }
             catch (Exception ex)
             {
@@ -433,6 +432,39 @@ namespace ChatClientWPF
                     }
                 });
             });
+
+            // 이미지 메시지 수신 콜백 추가
+            _hubConnection.On<object>("ReceiveImageMessage", async (messageData) =>
+            {
+                string jsonResponse = messageData.ToString();
+                JObject data = JObject.Parse(jsonResponse);
+                string senderId = data["senderId"].ToString();
+                string imageId = data["imageId"].ToString();
+                string thumbnailUrl = data["thumbnailUrl"].ToString();
+                string imageUrl = data["imageUrl"].ToString();
+                DateTime timestamp = data["timestamp"].ToObject<DateTime>();
+
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    bool isFromMe = senderId == _clientId;
+                    Messages.Add(new ChatMessage
+                    {
+                        IsFromMe = isFromMe,
+                        Content = "[이미지]",
+                        Timestamp = timestamp,
+                        ThumbnailUrl = $"{ServerUrl}{thumbnailUrl}",
+                        ImageUrl = $"{ServerUrl}{imageUrl}",
+                        IsImageMessage = true
+                    });
+
+                    // 자동 스크롤
+                    if (MessageList.Items.Count > 0)
+                    {
+                        MessageList.ScrollIntoView(MessageList.Items[MessageList.Items.Count - 1]);
+                    }
+                });
+            });
+
             // 선호도 업데이트 응답을 위한 콜백 추가
             _hubConnection.On("PreferencesUpdated", async () =>
             {
@@ -471,10 +503,6 @@ namespace ChatClientWPF
         {
             try
             {
-                // 기본 위치 설정 (서울 중심부)
-                //double latitude = 37.5642135;
-                //double longitude = 127.0016985;
-
                 // 성별 정보 가져오기 (선택된 ComboBoxItem이 없으면 기본값으로 male 사용)
                 string gender = "male";
                 if (SelectedGender != null && SelectedGender.Tag != null)
@@ -526,6 +554,7 @@ namespace ChatClientWPF
                 MessageBox.Show($"위치 업데이트 중 오류 발생: {ex.Message}");
             }
         }
+
         private async Task UpdateGenderAsync()
         {
             try
@@ -540,6 +569,7 @@ namespace ChatClientWPF
                 MessageBox.Show($"성별 업데이트 중 오류 발생: {ex.Message}");
             }
         }
+
         private async void JoinQueue_Click(object sender, RoutedEventArgs e)
         {
             if (!IsConnected || IsMatched)
@@ -557,6 +587,7 @@ namespace ChatClientWPF
                 MessageBox.Show($"대기열 참가 중 오류 발생: {ex.Message}");
             }
         }
+
         // 선호도 설정 저장 버튼 이벤트 핸들러
         private async void SavePreferences_Click(object sender, RoutedEventArgs e)
         {
@@ -585,6 +616,7 @@ namespace ChatClientWPF
                 MessageBox.Show($"선호도 저장 중 오류 발생: {ex.Message}");
             }
         }
+
         // 선호 성별 표시 텍스트 반환
         private string GetPreferredGenderDisplayText()
         {
@@ -595,6 +627,7 @@ namespace ChatClientWPF
                 default: return "제한 없음";
             }
         }
+
         private async void SendMessage_Click(object sender, RoutedEventArgs e)
         {
             await SendMessageAsync();
@@ -606,6 +639,209 @@ namespace ChatClientWPF
             {
                 e.Handled = true;
                 await SendMessageAsync();
+            }
+        }
+
+        // 이미지 전송 버튼 클릭 이벤트 처리
+        private async void SendImage_Click(object sender, RoutedEventArgs e)
+        {
+            if (!IsConnected || !IsMatched)
+                return;
+
+            // 파일 선택 대화상자
+            var openFileDialog = new OpenFileDialog
+            {
+                Title = "이미지 선택",
+                Filter = "이미지 파일|*.jpg;*.jpeg;*.png;*.gif|모든 파일|*.*"
+            };
+
+            if (openFileDialog.ShowDialog() == true)
+            {
+                try
+                {
+                    // 파일 업로드
+                    await UploadImageAsync(openFileDialog.FileName);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"이미지 전송 중 오류 발생: {ex.Message}");
+                }
+            }
+        }
+
+        // 이미지 업로드 메서드
+        private async Task UploadImageAsync(string filePath)
+        {
+            try
+            {
+                // 파일 정보 확인
+                var fileInfo = new FileInfo(filePath);
+                if (!fileInfo.Exists)
+                {
+                    MessageBox.Show("파일을 찾을 수 없습니다.");
+                    return;
+                }
+
+                // 파일 크기 제한 확인 (500KB = 512,000 바이트)
+                const long maxFileSize = 512000;
+                if (fileInfo.Length > maxFileSize)
+                {
+                    MessageBox.Show($"이미지 크기가 제한을 초과했습니다.\n최대 크기: 500KB\n현재 크기: {fileInfo.Length / 1024}KB",
+                        "용량 초과", MessageBoxButton.OK, MessageBoxImage.Warning);
+
+                    // 선택 사항: 이미지 압축 제안
+                    if (MessageBox.Show("이미지를 압축하여 전송하시겠습니까?", "이미지 압축",
+                        MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+                    {
+                        string compressedPath = await CompressImageAsync(filePath, maxFileSize);
+                        if (!string.IsNullOrEmpty(compressedPath))
+                        {
+                            // 압축된 이미지로 재시도
+                            await UploadImageAsync(compressedPath);
+                            return;
+                        }
+                    }
+                    return;
+                }
+
+                // 멀티파트 폼 데이터 생성
+                using var content = new MultipartFormDataContent();
+                using var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
+                using var streamContent = new StreamContent(fileStream);
+
+                streamContent.Headers.ContentType = new MediaTypeHeaderValue(GetMimeType(filePath));
+                content.Add(streamContent, "image", Path.GetFileName(filePath));
+
+                // 업로드 요청
+                var response = await _httpClient.PostAsync($"{ServerUrl}/api/client/{_clientId}/image", content);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorMessage = await response.Content.ReadAsStringAsync();
+                    MessageBox.Show($"이미지 업로드 실패: {errorMessage}");
+                    return;
+                }
+
+                // 성공 메시지 표시 (로컬에서만)
+                Messages.Add(new ChatMessage
+                {
+                    IsSystemMessage = true,
+                    Content = "이미지를 전송했습니다."
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"이미지 업로드 중 오류 발생: {ex.Message}");
+            }
+        }
+
+        // 이미지 압축 메서드
+        private async Task<string> CompressImageAsync(string sourcePath, long targetMaxSize)
+        {
+            try
+            {
+                // 임시 파일 경로 생성
+                string tempPath = Path.Combine(Path.GetTempPath(), $"compressed_{Path.GetFileName(sourcePath)}");
+                string extension = Path.GetExtension(sourcePath).ToLowerInvariant();
+
+                // 포맷에 따라 다른 처리
+                if (extension == ".jpg" || extension == ".jpeg" || extension == ".png")
+                {
+                    // WPF의 이미지 처리 사용
+                    BitmapImage sourceImage = new BitmapImage();
+                    sourceImage.BeginInit();
+                    sourceImage.CacheOption = BitmapCacheOption.OnLoad;
+                    sourceImage.UriSource = new Uri(sourcePath);
+                    sourceImage.EndInit();
+
+                    // 품질 설정 (JPEG용)
+                    JpegBitmapEncoder encoder = new JpegBitmapEncoder();
+
+                    // 초기 품질 설정
+                    int quality = 90;
+                    bool sizeReduced = false;
+
+                    do
+                    {
+                        encoder = new JpegBitmapEncoder();
+                        encoder.QualityLevel = quality;
+
+                        using (FileStream fs = new FileStream(tempPath, FileMode.Create))
+                        {
+                            encoder.Frames.Add(BitmapFrame.Create(sourceImage));
+                            encoder.Save(fs);
+                        }
+
+                        FileInfo compressedFile = new FileInfo(tempPath);
+                        if (compressedFile.Length <= targetMaxSize)
+                        {
+                            sizeReduced = true;
+                        }
+                        else
+                        {
+                            quality -= 10; // 품질 단계적 감소
+                        }
+
+                        // 품질이 너무 낮아지면 중단
+                        if (quality < 30)
+                        {
+                            MessageBox.Show("이미지를 충분히 압축할 수 없습니다. 더 작은 이미지를 사용해주세요.");
+                            return null;
+                        }
+
+                    } while (!sizeReduced);
+
+                    return tempPath;
+                }
+                else if (extension == ".gif")
+                {
+                    // GIF는 압축 지원하지 않음
+                    MessageBox.Show("GIF 파일 압축은 지원하지 않습니다. 더 작은 파일을 사용해주세요.");
+                    return null;
+                }
+                else
+                {
+                    // 지원하지 않는 형식
+                    MessageBox.Show("지원하지 않는 이미지 형식입니다.");
+                    return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"이미지 압축 중 오류 발생: {ex.Message}");
+                return null;
+            }
+        }
+
+        // MIME 타입 반환 메서드
+        private string GetMimeType(string fileName)
+        {
+            string extension = Path.GetExtension(fileName).ToLowerInvariant();
+            return extension switch
+            {
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".png" => "image/png",
+                ".gif" => "image/gif",
+                _ => "application/octet-stream"
+            };
+        }
+
+        // 이미지 클릭 이벤트 핸들러 (원본 이미지 보기)
+        private void Image_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is Image image && image.Tag is string imageUrl)
+            {
+                try
+                {
+                    // 이미지 뷰어 창 띄우기
+                    var imageViewer = new ImageViewerWindow(imageUrl);
+                    imageViewer.Owner = this;
+                    imageViewer.ShowDialog();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"이미지를 표시하는 중 오류 발생: {ex.Message}");
+                }
             }
         }
 
@@ -706,6 +942,9 @@ namespace ChatClientWPF
         private bool _isFromMe;
         private bool _isSystemMessage;
         private DateTime _timestamp;
+        private string _thumbnailUrl;
+        private string _imageUrl;
+        private bool _isImageMessage;
 
         public string Content
         {
@@ -752,6 +991,36 @@ namespace ChatClientWPF
             }
         }
 
+        public string ThumbnailUrl
+        {
+            get => _thumbnailUrl;
+            set
+            {
+                _thumbnailUrl = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public string ImageUrl
+        {
+            get => _imageUrl;
+            set
+            {
+                _imageUrl = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public bool IsImageMessage
+        {
+            get => _isImageMessage || !string.IsNullOrEmpty(ImageUrl);
+            set
+            {
+                _isImageMessage = value;
+                OnPropertyChanged();
+            }
+        }
+
         public HorizontalAlignment MessageAlignment =>
             IsSystemMessage ? HorizontalAlignment.Center :
             IsFromMe ? HorizontalAlignment.Right : HorizontalAlignment.Left;
@@ -767,16 +1036,5 @@ namespace ChatClientWPF
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
-    }
-
-    public class ClientConfig
-    {
-        public string ClientId { get; set; }
-        public string ServerUrl { get; set; }
-        public double Latitude { get; set; }
-        public double Longitude { get; set; }
-        public string Gender { get; set; }
-        public string PreferredGender { get; set; } = "any";
-        public int MaxDistance { get; set; } = 10000;
     }
 }
