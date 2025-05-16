@@ -670,6 +670,8 @@ namespace ChatClientWPF
         }
 
         // 이미지 업로드 메서드
+        // ChatClientWPF/MainWindow.xaml.cs의 UploadImageAsync 메서드 수정
+
         private async Task UploadImageAsync(string filePath)
         {
             try
@@ -682,14 +684,15 @@ namespace ChatClientWPF
                     return;
                 }
 
-                // 파일 크기 제한 확인 (500KB = 512,000 바이트)
+                // 파일 크기 제한 확인 (5MB = 5,242,880 바이트)
+                //const long maxFileSize = 5242880;
                 const long maxFileSize = 512000;
                 if (fileInfo.Length > maxFileSize)
                 {
-                    MessageBox.Show($"이미지 크기가 제한을 초과했습니다.\n최대 크기: 500KB\n현재 크기: {fileInfo.Length / 1024}KB",
+                    MessageBox.Show($"이미지 크기가 제한을 초과했습니다.\n최대 크기: 5MB\n현재 크기: {fileInfo.Length / 1024}KB",
                         "용량 초과", MessageBoxButton.OK, MessageBoxImage.Warning);
 
-                    // 선택 사항: 이미지 압축 제안
+                    // 이미지 압축 제안
                     if (MessageBox.Show("이미지를 압축하여 전송하시겠습니까?", "이미지 압축",
                         MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
                     {
@@ -703,6 +706,13 @@ namespace ChatClientWPF
                     }
                     return;
                 }
+
+                // 진행 상태 표시
+                Messages.Add(new ChatMessage
+                {
+                    IsSystemMessage = true,
+                    Content = "이미지 업로드 중..."
+                });
 
                 // 멀티파트 폼 데이터 생성
                 using var content = new MultipartFormDataContent();
@@ -719,10 +729,20 @@ namespace ChatClientWPF
                 {
                     var errorMessage = await response.Content.ReadAsStringAsync();
                     MessageBox.Show($"이미지 업로드 실패: {errorMessage}");
+
+                    // 실패 메시지 표시
+                    Messages.Add(new ChatMessage
+                    {
+                        IsSystemMessage = true,
+                        Content = "이미지 전송에 실패했습니다."
+                    });
                     return;
                 }
 
-                // 성공 메시지 표시 (로컬에서만)
+                // 응답 정보 확인
+                var responseJson = await response.Content.ReadAsStringAsync();
+                var responseData = JObject.Parse(responseJson);
+
                 Messages.Add(new ChatMessage
                 {
                     IsSystemMessage = true,
@@ -732,6 +752,13 @@ namespace ChatClientWPF
             catch (Exception ex)
             {
                 MessageBox.Show($"이미지 업로드 중 오류 발생: {ex.Message}");
+
+                // 오류 메시지 표시
+                Messages.Add(new ChatMessage
+                {
+                    IsSystemMessage = true,
+                    Content = $"이미지 전송 중 오류가 발생했습니다: {ex.Message}"
+                });
             }
         }
 
