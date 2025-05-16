@@ -184,8 +184,7 @@
 
         <!-- 버튼 컨트롤 -->
         <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,10,0,10" HorizontalAlignment="Center">
-            <Button Content="대기열 참가" Click="JoinQueue_Click" Width="100" IsEnabled="{Binding CanJoinQueue}" Margin="0,0,10,0"/>
-            <Button Content="대화 종료" Click="EndChat_Click" Width="100" IsEnabled="{Binding CanEndChat}"/>
+            <Button Content="재연결" Click="ReMatch_Click" Width="100" IsEnabled="{Binding IsConnected}"/>
         </StackPanel>
 
         <!-- 메시지 입력 -->
