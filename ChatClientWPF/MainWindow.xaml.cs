@@ -337,6 +337,8 @@ namespace ChatClientWPF
                 System.Diagnostics.Debug.WriteLine($"Connect_Click 5: {sp.ElapsedMilliseconds}ms");
                 IsConnected = true;
                 ConnectionStatus = "연결됨";
+
+                JoinQueue();
             }
             catch (Exception ex)
             {
@@ -571,6 +573,24 @@ namespace ChatClientWPF
         }
 
         private async void JoinQueue_Click(object sender, RoutedEventArgs e)
+        {
+            if (!IsConnected || IsMatched)
+                return;
+
+            try
+            {
+                MatchStatus = "매칭 대기열에 참가 중...";
+                await _hubConnection.InvokeAsync("JoinWaitingQueue", Latitude, Longitude, SelectedGender.Tag.ToString(),
+                    _preferredGenderValue, MaxDistance);
+            }
+            catch (Exception ex)
+            {
+                MatchStatus = "매칭 대기열 참가 실패";
+                MessageBox.Show($"대기열 참가 중 오류 발생: {ex.Message}");
+            }
+        }
+
+        private async void JoinQueue()
         {
             if (!IsConnected || IsMatched)
                 return;
