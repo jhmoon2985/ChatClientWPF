@@ -574,19 +574,16 @@ namespace ChatClientWPF
 
         private async void ReMatch_Click(object sender, RoutedEventArgs e)
         {
-            if (!IsConnected || IsMatched)
+            if (!IsConnected)
                 return;
 
-            try
+            if (!IsMatched)
             {
-                MatchStatus = "매칭 대기열에 참가 중...";
-                await _hubConnection.InvokeAsync("JoinWaitingQueue", Latitude, Longitude, SelectedGender.Tag.ToString(),
-                    _preferredGenderValue, MaxDistance);
+                JoinQueue();
             }
-            catch (Exception ex)
+            else
             {
-                MatchStatus = "매칭 대기열 참가 실패";
-                MessageBox.Show($"대기열 참가 중 오류 발생: {ex.Message}");
+                EndChat();
             }
         }
 
@@ -610,7 +607,7 @@ namespace ChatClientWPF
 
         private async void JoinQueue()
         {
-            if (!IsConnected || IsMatched)
+            if (!IsConnected)
                 return;
 
             try
@@ -951,6 +948,25 @@ namespace ChatClientWPF
         private async void EndChat_Click(object sender, RoutedEventArgs e)
         {
             if (!IsConnected || !IsMatched)
+                return;
+
+            try
+            {
+                await _hubConnection.InvokeAsync("EndChat");
+                Messages.Add(new ChatMessage
+                {
+                    IsSystemMessage = true,
+                    Content = "대화를 종료하고 새로운 상대를 찾습니다."
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"대화 종료 중 오류 발생: {ex.Message}");
+            }
+        }
+        private async void EndChat()
+        {
+            if (!IsConnected)
                 return;
 
             try
