@@ -1,0 +1,28 @@
+﻿<Window x:Class="ChatClientWPF.SplashWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Random Chat" Height="400" Width="600"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent">
+    <Border CornerRadius="20" Background="#FF4169E1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <TextBlock Text="" FontSize="48" FontWeight="Bold" Foreground="White" 
+                           HorizontalAlignment="Center" Margin="0,0,0,20"/>
+                <Image Source="/Resources/chat_logo.png" Width="200" Height="200" 
+                       RenderOptions.BitmapScalingMode="HighQuality"/>
+                <TextBlock x:Name="StatusText" Text="서버에 연결 중..." FontSize="18" Foreground="White" 
+                           HorizontalAlignment="Center" Margin="0,20,0,0"/>
+            </StackPanel>
+
+            <ProgressBar Grid.Row="1" IsIndeterminate="True" Height="10" Margin="50,0,50,30"/>
+        </Grid>
+    </Border>
+</Window>

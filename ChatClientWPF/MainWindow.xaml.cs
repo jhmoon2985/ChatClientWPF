@@ -21,12 +21,10 @@ using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Win32;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using System.Windows.Threading;
 
 namespace ChatClientWPF
 {
-    /// <summary>
-    /// MainWindow.xaml.cs
-    /// </summary>
     public partial class MainWindow : Window, INotifyPropertyChanged
     {
         private HubConnection _hubConnection;
@@ -40,12 +38,76 @@ namespace ChatClientWPF
         private string _connectionStatus;
         private string _matchStatus;
         private ComboBoxItem _selectedGender;
-        private string _serverUrl = "http://localhost:5115"; // Default server URL// 위도와 경도를 직접 바인딩하기 위한 속성
+        private string _serverUrl = "http://localhost:5115"; // Default server URL
         private double _latitude = 37.5642135;
-        // 선호도 관련 속성 추가
         private ComboBoxItem _selectedPreferredGender;
+        private ComboBoxItem _selectedMaxDistance;
         private int _maxDistance = 10000;
         private string _preferredGenderValue = "any";
+        private bool _showSettings = false;
+        private int _points = 0;
+        private DateTime? _preferenceActiveUntil = null;
+        private DispatcherTimer _preferencesTimer;
+
+        // 새 속성들
+        public bool ShowSettings
+        {
+            get => _showSettings;
+            set
+            {
+                _showSettings = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public int Points
+        {
+            get => _points;
+            set
+            {
+                _points = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(PointsText));
+                OnPropertyChanged(nameof(CanActivatePreference));
+            }
+        }
+
+        public DateTime? PreferenceActiveUntil
+        {
+            get => _preferenceActiveUntil;
+            set
+            {
+                _preferenceActiveUntil = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(IsPreferenceActive));
+                OnPropertyChanged(nameof(PreferenceStatusText));
+                OnPropertyChanged(nameof(CanChangePreference));
+                OnPropertyChanged(nameof(CanActivatePreference));
+                OnPropertyChanged(nameof(CanSavePreferences));
+            }
+        }
+
+        public bool IsPreferenceActive => PreferenceActiveUntil.HasValue && PreferenceActiveUntil.Value > DateTime.UtcNow;
+
+        public string PointsText => $"포인트: {Points:N0} P";
+
+        public string PreferenceStatusText
+        {
+            get
+            {
+                if (!IsPreferenceActive)
+                    return "";
+
+                var timeLeft = PreferenceActiveUntil.Value - DateTime.UtcNow;
+                return $"선호도 설정 활성화: {timeLeft.Minutes}분 {timeLeft.Seconds}초 남음";
+            }
+        }
+
+        public bool CanChangePreference => IsConnected && (IsPreferenceActive || _preferredGenderValue == "any" && _maxDistance == 10000);
+
+        public bool CanActivatePreference => IsConnected && !IsPreferenceActive && Points >= 1000;
+
+        public bool CanSavePreferences => IsConnected && (IsPreferenceActive || _preferredGenderValue == "any" && _maxDistance == 10000);
 
         public ComboBoxItem SelectedPreferredGender
         {
@@ -58,18 +120,25 @@ namespace ChatClientWPF
                     _preferredGenderValue = value.Tag.ToString();
                 }
                 OnPropertyChanged();
+                OnPropertyChanged(nameof(CanSavePreferences));
             }
         }
 
-        public int MaxDistance
+        public ComboBoxItem SelectedMaxDistance
         {
-            get => _maxDistance;
+            get => _selectedMaxDistance;
             set
             {
-                _maxDistance = value;
+                _selectedMaxDistance = value;
+                if (value != null && value.Tag != null)
+                {
+                    _maxDistance = int.Parse(value.Tag.ToString());
+                }
                 OnPropertyChanged();
+                OnPropertyChanged(nameof(CanSavePreferences));
             }
         }
+
         public double Latitude
         {
             get => _latitude;
@@ -77,7 +146,6 @@ namespace ChatClientWPF
             {
                 _latitude = value;
                 OnPropertyChanged();
-                // 위치 텍스트도 함께 업데이트
                 LocationText = $"위치: {_latitude:F6}, {_longitude:F6}";
             }
         }
@@ -90,11 +158,10 @@ namespace ChatClientWPF
             {
                 _longitude = value;
                 OnPropertyChanged();
-                // 위치 텍스트도 함께 업데이트
                 LocationText = $"위치: {_latitude:F6}, {_longitude:F6}";
             }
         }
-        // 위치 텍스트 표시용 속성
+
         private string _locationText = "위치: 37.5642135, 127.0016985";
         public string LocationText
         {
@@ -127,6 +194,9 @@ namespace ChatClientWPF
                 OnPropertyChanged(nameof(IsDisconnected));
                 OnPropertyChanged(nameof(CanJoinQueue));
                 OnPropertyChanged(nameof(CanSendMessage));
+                OnPropertyChanged(nameof(CanChangePreference));
+                OnPropertyChanged(nameof(CanActivatePreference));
+                OnPropertyChanged(nameof(CanSavePreferences));
             }
         }
 
@@ -228,7 +298,127 @@ namespace ChatClientWPF
             ConnectionStatus = "연결 끊김";
             MatchStatus = "매칭 대기 중";
 
+            // 타이머 초기화
+            _preferencesTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(1)
+            };
+            _preferencesTimer.Tick += PreferencesTimer_Tick;
+            _preferencesTimer.Start();
+
             LoadClientIdFromStorage();
+            InitializeDistanceComboBox();
+        }
+
+        private void InitializeDistanceComboBox()
+        {
+            // ComboBox 초기화 (MaxDistanceComboBox가 초기화 된 후 호출)
+            if (MaxDistanceComboBox != null)
+            {
+                foreach (ComboBoxItem item in MaxDistanceComboBox.Items)
+                {
+                    if (item.Tag.ToString() == _maxDistance.ToString())
+                    {
+                        SelectedMaxDistance = item;
+                        break;
+                    }
+                }
+
+                // 기본값 설정이 안 된 경우 첫 번째 아이템 선택
+                if (SelectedMaxDistance == null && MaxDistanceComboBox.Items.Count > 0)
+                {
+                    SelectedMaxDistance = MaxDistanceComboBox.Items[0] as ComboBoxItem;
+                }
+            }
+        }
+
+        private void PreferencesTimer_Tick(object sender, EventArgs e)
+        {
+            // 선호도 설정 시간이 남아있는지 확인 및 업데이트
+            if (IsPreferenceActive)
+            {
+                OnPropertyChanged(nameof(PreferenceStatusText));
+
+                // 시간이 만료되었을 경우 갱신
+                if (PreferenceActiveUntil <= DateTime.UtcNow)
+                {
+                    PreferenceActiveUntil = null;
+
+                    if (IsConnected)
+                    {
+                        // 선호도를 기본값으로 되돌리기
+                        _preferredGenderValue = "any";
+                        _maxDistance = 10000;
+
+                        // ComboBox 업데이트
+                        UpdatePreferenceComboBoxes();
+
+                        // 서버에 업데이트 요청
+                        UpdatePreferencesAsync().ConfigureAwait(false);
+                    }
+
+                    // 시스템 메시지 추가
+                    Messages.Add(new ChatMessage
+                    {
+                        IsSystemMessage = true,
+                        Content = "선호도 설정 시간이 만료되었습니다. 기본 설정으로 되돌아갑니다."
+                    });
+                }
+            }
+        }
+
+        private void UpdatePreferenceComboBoxes()
+        {
+            // 선호 성별 콤보박스 업데이트
+            foreach (ComboBoxItem item in PreferredGenderComboBox.Items)
+            {
+                if (item.Tag.ToString() == _preferredGenderValue)
+                {
+                    SelectedPreferredGender = item;
+                    break;
+                }
+            }
+
+            // 거리 콤보박스 업데이트
+            foreach (ComboBoxItem item in MaxDistanceComboBox.Items)
+            {
+                if (item.Tag.ToString() == _maxDistance.ToString())
+                {
+                    SelectedMaxDistance = item;
+                    break;
+                }
+            }
+        }
+
+        // 연결 초기화 메소드 (SplashWindow에서 호출)
+        public async Task InitializeConnectionAsync()
+        {
+            try
+            {
+                ConnectionStatus = "연결 중...";
+
+                _hubConnection = new HubConnectionBuilder()
+                    .WithUrl($"{ServerUrl}/chathub")
+                    .WithAutomaticReconnect()
+                    .Build();
+
+                RegisterHubCallbacks();
+                await _hubConnection.StartAsync();
+                await RegisterClientAsync();
+
+                IsConnected = true;
+                ConnectionStatus = "연결됨";
+
+                // 대기열에 자동 참가
+                JoinQueue();
+
+                return;
+            }
+            catch (Exception ex)
+            {
+                ConnectionStatus = "연결 실패";
+                throw new Exception($"서버 연결에 실패했습니다: {ex.Message}", ex);
+            }
         }
 
         private void LoadClientIdFromStorage()
@@ -244,15 +434,17 @@ namespace ChatClientWPF
                     _latitude = config.Latitude;
                     _longitude = config.Longitude;
                     SetGender(config.Gender);
+                    Points = config.Points;
+                    PreferenceActiveUntil = config.PreferenceActiveUntil;
 
                     // 선호도 설정 로드
                     if (!string.IsNullOrEmpty(config.PreferredGender))
                     {
-                        SetPreferredGender(config.PreferredGender);
+                        _preferredGenderValue = config.PreferredGender;
                     }
                     if (config.MaxDistance > 0)
                     {
-                        MaxDistance = config.MaxDistance;
+                        _maxDistance = config.MaxDistance;
                     }
                 }
             }
@@ -261,29 +453,37 @@ namespace ChatClientWPF
                 MessageBox.Show($"설정 파일을 로드하는 데 실패했습니다: {ex.Message}");
             }
         }
+
         private void SetPreferredGender(string preferredGender)
         {
             ComboBox preferredGenderComboBox = (ComboBox)FindName("PreferredGenderComboBox");
-            foreach (ComboBoxItem item in preferredGenderComboBox.Items)
+            if (preferredGenderComboBox != null)
             {
-                if (item.Tag.ToString() == preferredGender)
+                foreach (ComboBoxItem item in preferredGenderComboBox.Items)
                 {
-                    SelectedPreferredGender = item;
-                    _preferredGenderValue = preferredGender;
-                    break;
+                    if (item.Tag.ToString() == preferredGender)
+                    {
+                        SelectedPreferredGender = item;
+                        _preferredGenderValue = preferredGender;
+                        break;
+                    }
                 }
             }
         }
+
         private void SetGender(string gender)
         {
             ComboBox genderComboBox = (ComboBox)FindName("GenderComboBox");
-            foreach (ComboBoxItem item in genderComboBox.Items)
+            if (genderComboBox != null)
             {
-                if (item.Tag.ToString() == gender)
+                foreach (ComboBoxItem item in genderComboBox.Items)
                 {
-                    SelectedGender = item;
-                    SelectedGenderValue = SelectedGender.Tag.ToString();
-                    break;
+                    if (item.Tag.ToString() == gender)
+                    {
+                        SelectedGender = item;
+                        SelectedGenderValue = SelectedGender.Tag.ToString();
+                        break;
+                    }
                 }
             }
         }
@@ -300,7 +500,9 @@ namespace ChatClientWPF
                     Longitude = Longitude,
                     Gender = SelectedGenderValue,
                     PreferredGender = _preferredGenderValue,
-                    MaxDistance = MaxDistance
+                    MaxDistance = _maxDistance,
+                    Points = Points,
+                    PreferenceActiveUntil = PreferenceActiveUntil
                 };
                 var json = JsonConvert.SerializeObject(config);
                 System.IO.File.WriteAllText("client_config.json", json);
@@ -310,6 +512,7 @@ namespace ChatClientWPF
                 MessageBox.Show($"설정 파일을 저장하는 데 실패했습니다: {ex.Message}");
             }
         }
+
         Stopwatch sp = new Stopwatch();
         private async void Connect_Click(object sender, RoutedEventArgs e)
         {
@@ -354,11 +557,26 @@ namespace ChatClientWPF
                 string jsonResponse = response.ToString(); // 또는 response.ToString()
                 JObject data = JObject.Parse(jsonResponse);
                 _clientId = data["clientId"].ToString();
+
+                // 포인트 정보 추가
+                if (data["points"] != null)
+                {
+                    Points = data["points"].ToObject<int>();
+                }
+
+                // 선호도 활성화 정보 추가
+                if (data["preferenceActiveUntil"] != null && data["preferenceActiveUntil"].Type != JTokenType.Null)
+                {
+                    PreferenceActiveUntil = data["preferenceActiveUntil"].ToObject<DateTime>();
+                }
+
                 SaveClientIdToStorage();
 
                 await Dispatcher.InvokeAsync(() =>
                 {
                     ConnectionStatus = $"등록됨: {_clientId}";
+                    // 선호도 설정 콤보박스 업데이트
+                    UpdatePreferenceComboBoxes();
                 });
             });
 
@@ -480,6 +698,45 @@ namespace ChatClientWPF
                 });
             });
 
+            // 포인트 업데이트 콜백 추가
+            _hubConnection.On<object>("PointsUpdated", async (response) =>
+            {
+                string jsonResponse = response.ToString();
+                JObject data = JObject.Parse(jsonResponse);
+
+                int newPoints = data["points"].ToObject<int>();
+                DateTime? activeUntil = null;
+
+                if (data["preferenceActiveUntil"] != null && data["preferenceActiveUntil"].Type != JTokenType.Null)
+                {
+                    activeUntil = data["preferenceActiveUntil"].ToObject<DateTime>();
+                }
+
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    Points = newPoints;
+                    if (activeUntil.HasValue)
+                    {
+                        PreferenceActiveUntil = activeUntil.Value;
+                        Messages.Add(new ChatMessage
+                        {
+                            IsSystemMessage = true,
+                            Content = $"포인트가 차감되어 선호도 설정이 10분간 활성화되었습니다. 남은 포인트: {Points:N0} P"
+                        });
+                    }
+                    else
+                    {
+                        Messages.Add(new ChatMessage
+                        {
+                            IsSystemMessage = true,
+                            Content = $"포인트가 업데이트 되었습니다. 현재 포인트: {Points:N0} P"
+                        });
+                    }
+
+                    SaveClientIdToStorage();
+                });
+            });
+
             _hubConnection.Closed += async (error) =>
             {
                 await Dispatcher.InvokeAsync(() =>
@@ -520,7 +777,9 @@ namespace ChatClientWPF
                     Longitude = _longitude,
                     Gender = gender,
                     PreferredGender = _preferredGenderValue,
-                    MaxDistance = _maxDistance
+                    MaxDistance = _maxDistance,
+                    Points = Points,
+                    PreferenceActiveUntil = PreferenceActiveUntil
                 });
             }
             catch (Exception ex)
@@ -528,13 +787,14 @@ namespace ChatClientWPF
                 MessageBox.Show($"등록 중 오류 발생: {ex.Message}");
             }
         }
+
         private async Task UpdatePreferencesAsync()
         {
             try
             {
                 if (IsConnected)
                 {
-                    await _hubConnection.InvokeAsync("UpdatePreferences", _preferredGenderValue, MaxDistance);
+                    await _hubConnection.InvokeAsync("UpdatePreferences", _preferredGenderValue, _maxDistance);
                 }
             }
             catch (Exception ex)
@@ -542,6 +802,7 @@ namespace ChatClientWPF
                 MessageBox.Show($"선호도 업데이트 중 오류 발생: {ex.Message}");
             }
         }
+
         private async Task UpdateLocationAsync(double latitude, double longitude)
         {
             try
@@ -572,6 +833,60 @@ namespace ChatClientWPF
             }
         }
 
+        // 이벤트 핸들러 - 선호도 활성화 버튼
+        private async void ActivatePreference_Click(object sender, RoutedEventArgs e)
+        {
+            if (!IsConnected || !CanActivatePreference)
+                return;
+
+            if (MessageBox.Show("선호도 설정을 활성화하면 1,000 포인트가 차감됩니다. 계속 하시겠습니까?",
+                              "선호도 활성화", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+            {
+                try
+                {
+                    string preferredGender = _preferredGenderValue;
+                    int maxDistance = _maxDistance;
+
+                    if (SelectedPreferredGender != null && SelectedPreferredGender.Tag != null)
+                    {
+                        preferredGender = SelectedPreferredGender.Tag.ToString();
+                    }
+
+                    if (SelectedMaxDistance != null && SelectedMaxDistance.Tag != null)
+                    {
+                        maxDistance = int.Parse(SelectedMaxDistance.Tag.ToString());
+                    }
+
+                    // 서버에 선호도 활성화 요청
+                    await _hubConnection.InvokeAsync("ActivatePreference", preferredGender, maxDistance);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"선호도 활성화 중 오류 발생: {ex.Message}");
+                }
+            }
+        }
+
+        // 이벤트 핸들러 - 설정 버튼
+        private void Settings_Click(object sender, RoutedEventArgs e)
+        {
+            ShowSettings = !ShowSettings;
+        }
+
+        // 이벤트 핸들러 - 상점 버튼
+        private void Store_Click(object sender, RoutedEventArgs e)
+        {
+            // 상점 창 열기
+            var storeWindow = new StoreWindow(_clientId, Points, ServerUrl, _httpClient);
+            storeWindow.Owner = this;
+            storeWindow.PointsUpdated += (s, args) =>
+            {
+                Points = args.NewPoints;
+                SaveClientIdToStorage();
+            };
+            storeWindow.ShowDialog();
+        }
+
         private async void ReMatch_Click(object sender, RoutedEventArgs e)
         {
             if (!IsConnected)
@@ -596,7 +911,7 @@ namespace ChatClientWPF
             {
                 MatchStatus = "매칭 대기열에 참가 중...";
                 await _hubConnection.InvokeAsync("JoinWaitingQueue", Latitude, Longitude, SelectedGender.Tag.ToString(),
-                    _preferredGenderValue, MaxDistance);
+                    _preferredGenderValue, _maxDistance);
             }
             catch (Exception ex)
             {
@@ -604,7 +919,6 @@ namespace ChatClientWPF
                 MessageBox.Show($"대기열 참가 중 오류 발생: {ex.Message}");
             }
         }
-
         private async void JoinQueue()
         {
             if (!IsConnected)
@@ -614,7 +928,7 @@ namespace ChatClientWPF
             {
                 MatchStatus = "매칭 대기열에 참가 중...";
                 await _hubConnection.InvokeAsync("JoinWaitingQueue", Latitude, Longitude, SelectedGender.Tag.ToString(),
-                    _preferredGenderValue, MaxDistance);
+                    _preferredGenderValue, _maxDistance);
             }
             catch (Exception ex)
             {
@@ -636,6 +950,11 @@ namespace ChatClientWPF
                     _preferredGenderValue = SelectedPreferredGender.Tag.ToString();
                 }
 
+                if (SelectedMaxDistance != null && SelectedMaxDistance.Tag != null)
+                {
+                    _maxDistance = int.Parse(SelectedMaxDistance.Tag.ToString());
+                }
+
                 await UpdatePreferencesAsync();
                 SaveClientIdToStorage();
 
@@ -643,7 +962,7 @@ namespace ChatClientWPF
                 Messages.Add(new ChatMessage
                 {
                     IsSystemMessage = true,
-                    Content = $"매칭 선호도가 저장되었습니다. 선호 성별: {GetPreferredGenderDisplayText()}, 최대 거리: {MaxDistance}km"
+                    Content = $"매칭 선호도가 저장되었습니다. 선호 성별: {GetPreferredGenderDisplayText()}, 최대 거리: {GetMaxDistanceDisplayText()}"
                 });
             }
             catch (Exception ex)
@@ -661,6 +980,14 @@ namespace ChatClientWPF
                 case "female": return "여성만";
                 default: return "제한 없음";
             }
+        }
+
+        // 최대 거리 표시 텍스트 반환
+        private string GetMaxDistanceDisplayText()
+        {
+            if (_maxDistance >= 10000)
+                return "제한 없음";
+            return $"{_maxDistance} km";
         }
 
         private async void SendMessage_Click(object sender, RoutedEventArgs e)
@@ -704,9 +1031,6 @@ namespace ChatClientWPF
             }
         }
 
-        // 이미지 업로드 메서드
-        // ChatClientWPF/MainWindow.xaml.cs의 UploadImageAsync 메서드 수정
-
         private async Task UploadImageAsync(string filePath)
         {
             try
@@ -724,7 +1048,7 @@ namespace ChatClientWPF
                 const long maxFileSize = 512000;
                 if (fileInfo.Length > maxFileSize)
                 {
-                    MessageBox.Show($"이미지 크기가 제한을 초과했습니다.\n최대 크기: 5MB\n현재 크기: {fileInfo.Length / 1024}KB",
+                    MessageBox.Show($"이미지 크기가 제한을 초과했습니다.\\n최대 크기: 5MB\\n현재 크기: {fileInfo.Length / 1024}KB",
                         "용량 초과", MessageBoxButton.OK, MessageBoxImage.Warning);
 
                     // 이미지 압축 제안
@@ -964,6 +1288,7 @@ namespace ChatClientWPF
                 MessageBox.Show($"대화 종료 중 오류 발생: {ex.Message}");
             }
         }
+
         private async void EndChat()
         {
             if (!IsConnected)
@@ -1007,7 +1332,11 @@ namespace ChatClientWPF
 
         private void Window_Closing(object sender, CancelEventArgs e)
         {
-            //DisconnectAsync().Wait();
+            // 설정 저장
+            SaveClientIdToStorage();
+
+            // 타이머 정지
+            _preferencesTimer.Stop();
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
