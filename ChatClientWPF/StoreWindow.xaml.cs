@@ -35,7 +35,7 @@ namespace ChatClientWPF
             InitializeComponent();
             DataContext = this;
 
-            this.Name = "StoreWindowControl"; // XAML에서 바인딩 참조용
+            //this.Name = "StoreWindowControl"; // XAML에서 바인딩 참조용
 
             _clientId = clientId;
             _points = points;
