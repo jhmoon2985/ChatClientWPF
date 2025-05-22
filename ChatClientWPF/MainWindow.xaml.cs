@@ -96,7 +96,20 @@ namespace ChatClientWPF
             get
             {
                 if (!IsPreferenceActive)
+                {
+                    // 선호도를 기본값으로 되돌리기
+                    _preferredGenderValue = "any";
+                    _maxDistance = 10000;
+
+                    // ComboBox 업데이트
+                    UpdatePreferenceComboBoxes();
+
+                    // 서버에 업데이트 요청
+                    UpdatePreferencesAsync().ConfigureAwait(false);
+
                     return "";
+                }
+                    
 
                 var timeLeft = PreferenceActiveUntil.Value - DateTime.UtcNow;
                 return $"선호도 설정 활성화: {timeLeft.Minutes}분 {timeLeft.Seconds}초 남음";
